@@ -28,7 +28,7 @@ class Compressor(object):
     def decompress(tensor, ctx):
         """Decompress the tensor with the given context."""
         pass
-
+ 
 
 class NoneCompressor(Compressor):
     """Default no-op compression."""
