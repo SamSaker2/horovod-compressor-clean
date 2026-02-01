@@ -3,24 +3,24 @@
 This repository contains an implementation of a **deterministic 30% Random Sparsification Compressor** for **Horovod**, supporting both **TensorFlow** and **PyTorch**.  
 The implementation reduces gradient communication overhead by sending only a fixed percentage of entries (30%) while ensuring **identical sampling across all workers** without transmitting indices.
 ---
-##Features :
+## Features :
 
-###Deterministic Sampling Across Workers:
+### Deterministic Sampling Across Workers:
 Workers regenerate the **same random indices** using:
 1- **TensorFlow:** `tf.random.experimental.stateless_shuffle`  
 2- **PyTorch:** Seeded `torch.Generator`
 This ensures synchronization with **zero communication overhead** for indices.
-###TensorFlow Version :
+### TensorFlow Version :
 1- No `.numpy()` calls  
 2- 100% compatible with TF1 Graph mode + TF2 Eager  
 3- Stores shapes and sizes dynamically in `ctx` without breaking graph execution
 
-###PyTorch Version :
+### PyTorch Version :
 1- Stores original `dtype` in `ctx`  
 2- Uses `dtype` correctly during decompression  
 3- Zero-allocation-based reconstruction
 
-###Horovod-Compatible
+### Horovod-Compatible
 Drop-in support using:
 ```python
 optimizer = hvd.DistributedOptimizer(optimizer, compression=RandomSparsityCompressor)
