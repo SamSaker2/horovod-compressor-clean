@@ -72,23 +72,21 @@ class Compression(object):
 
     """Compress all floating point gradients to 16-bit."""
     fp16 = FP16Compressor
-# === New: Deterministic Random 30% Sparsification (graph-safe) ===
+#New: Deterministic Random 30% Sparsification
 import hashlib
 import tensorflow as tf
 
 class RandomSparsityTF(object):
     """
-    Deterministic random sparsification compressor for TensorFlow.
+    Deterministic random sparsification compressor.
 
-    This compressor selects a fixed fraction (default 30%) of tensor elements
-    using uniform random sampling *without replacement*. All workers generate
-    identical random indices by deriving a deterministic stateless seed from
-    the tensor's dtype, static shape, and a per-signature counter. This ensures
-    that no index information needs to be communicated between workers.
+    This is a random sparsification compressor in which a fixed percentage (by default 30%) of elements in the tensor
+    is chosen randomly and uniformly *without replacement*. All workers compute the same random indices using
+    a deterministic and stateless seed derived from the tensor's dtype and static shape, and from a counter
+    unique per-signature. This way, no index data is transmitted between workers.
 
-    Only the selected values are transmitted. During decompression, the same
-    indices are regenerated locally using the same seed, and the values are
-    scattered back into a zero-initialized tensor of the original shape.
+    Only the selected elements are transmitted. At decompression time, the same random indices are recomputed
+    using the same seed and scattered back into a zero-filled tensor of the original shape.
     """
     _counters = {}
 
@@ -96,11 +94,10 @@ class RandomSparsityTF(object):
     def _static_shape_tuple(t):
         """
         Extracts the static shape of a TensorFlow tensor as a Python tuple.
-
         Returns:
-            A tuple representing the static shape. Dynamic dimensions are kept
-            as None. Used as part of the tensor signature for deterministic
-            seed generation.
+        A tuple representing the static shape. Dynamic dimensions are kept as None. 
+        Used as part of the tensor signature for deterministic
+        seed generation.
         """
         if hasattr(t, "shape") and t.shape.rank is not None:
             return tuple(d if d is None else int(d) for d in t.shape.as_list())
@@ -110,9 +107,8 @@ class RandomSparsityTF(object):
     def _signature(cls, tensor):
         """
         Builds a deterministic signature for the tensor based on dtype and shape.
-
-        This signature sufficiently identifies the tensor structure for deterministic seeding
-        and is used to derive a stable base seed shared across all workers.
+        This signature is sufficient to identify the structure of the tensor
+        for deterministic seeding. It is used to compute a base seed common to all workers.
         """
         shp = cls._static_shape_tuple(tensor)
         return (str(tensor.dtype.name), shp)
@@ -121,9 +117,9 @@ class RandomSparsityTF(object):
     def _stable_base(sig):
         """
         Computes a stable integer seed from the tensor signature using SHA-256.
-
         The first 4 bytes of the hash are converted into a 31-bit positive
-        integer. This ensures identical seeds across all workers.
+        integer. 
+        This ensures identical seeds across all workers.
         """
         h = hashlib.sha256(repr(sig).encode('utf-8')).digest()
         return int.from_bytes(h[:4], byteorder='big', signed=False) & 0x7FFFFFFF
@@ -132,10 +128,9 @@ class RandomSparsityTF(object):
     def _next_seed(cls, sig):
         """
         Generates a deterministic stateless seed for TensorFlow.
-
         The seed is composed of:
-            - a stable base derived from the tensor signature
-            - a per-signature counter to ensure uniqueness across calls
+            1- A stable base derived from the tensor signature
+            2- A per-signature counter to ensure uniqueness across calls
         Returns:
             A TensorFlow int32 vector of shape [2], suitable for stateless RNG.
         """
@@ -147,22 +142,17 @@ class RandomSparsityTF(object):
     @classmethod
     def compress(cls, tensor, fraction=0.30):
         """
-        Compresses the tensor by selecting a deterministic random subset of values.
-
+        Compresses the tensor by selecting a deterministic random subset of its values.
         Steps:
-            1. Flatten the tensor.
-            2. Compute k = ceil(fraction * n).
-            3. Generate a stateless random permutation using the deterministic seed.
-            4. Select the first k indices.
-            5. Gather the corresponding values.
-
-        Args:
-            tensor: Input TensorFlow tensor.
-            fraction: Fraction of elements to keep (default 0.30).
-
+        1- Flatten the tensor. 2- Calculate k = ceil(fraction × n).
+        3- Generate a stateless random permutation using the deterministic seed.
+        4- Select the first k. 5- Gather the corresponding values.
+        Arguments:
+        tensor: Input tensor.
+        fraction: Fraction of elements to retain. Defaults to 0.30.
         Returns:
-            values: 1-D tensor of selected values.
-            ctx: A tuple (original_shape, seed, total_elements) used for decompression.
+        values: 1-D tensor containing the selected values.
+        ctx: Tuple containing the original shape of the tensor, seed, total elements.
         """
         if not tensor.dtype.is_floating:
             return tensor, None
@@ -189,22 +179,16 @@ class RandomSparsityTF(object):
     @classmethod
     def decompress(cls, values, ctx):
         """
-        Reconstructs the original tensor shape by scattering values into zeros.
-
+        Reconstructs the original tensor shape by scattering the values to the zero positions.
         Steps:
-            1. Regenerate the same random permutation using the stored seed.
-            2. Select the first k indices.
-            3. Create a zero-initialized flat tensor of length n.
-            4. Scatter the received values at the selected indices.
-            5. Reshape back to the original tensor shape.
-
+        1- Regenerate the same permutation of size k using the stored seed.
+        2- Select the first k indices. 3- Create a flat tensor of size n initialized with zeros.
+        4- Scatter the received values. 5- Reshape the tensor to the original shape.
         Args:
-            values: 1-D tensor of received values.
-            ctx: (original_shape, seed, total_elements).
-
+        values: 1-D tensor containing the received values.
+        ctx: Tuple containing (original_shape, seed, total_elements).
         Returns:
-            A TensorFlow tensor with the original shape, containing zeros in
-            unselected positions.
+        TensorFlow tensor of the original shape with zeros at the unselected positions.
         """
         if ctx is None:
             return values
