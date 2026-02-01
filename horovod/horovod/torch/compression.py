@@ -72,7 +72,7 @@ class Compression(object):
 
     """Compress all floating point gradients to 16-bit."""
     fp16 = FP16Compressor
-# === New: Deterministic Random 30% Sparsification (PyTorch) ===
+#New: Deterministic Random 30% Sparsification
 import hashlib
 import torch
 
@@ -80,34 +80,30 @@ class RandomSparsityTorch(object):
     """
     Deterministic random sparsification compressor for PyTorch.
 
-    This compressor selects a fixed fraction (default 30%) of tensor elements
-    using uniform random sampling without replacement. A deterministic 64-bit
-    seed is derived from the tensor's dtype, shape, and a per-signature counter,
-    ensuring that all workers generate identical random indices without any
-    communication.
-
-    Only the selected values are transmitted. During decompression, the same
-    indices are regenerated locally using the same seed, and the values are
-    scattered back into a zero-filled tensor of the original shape.
+    The compressor randomly samples a constant number of elements 
+    (default: 30%) of a tensor uniformly without replacement.
+    The compressor uses a deterministic 64-bit seed that depends on the tensor’s dtype, shape, and a counter per signature.
+    Thus, all workers will use the same indices without any communication.
+    Only the sampled elements are sent. On decompression, 
+    the same indices are generated locally with the same seed,
+    and the tensor is reconstructed by filling a tensor of zeros with the original shape.
     """
     _counters = {}
 
     @staticmethod
     def _signature(tensor):
         """
-        Builds a deterministic signature for the tensor based on dtype and size.
-
+        Builds a deterministic signature for the tensor based on its data type and size.
         Returns:
-            A tuple (dtype_string, size_tuple) used to derive a stable seed.
+        A tuple (dtype_string, size_tuple) used to derive a stable seed.
         """
         return (str(tensor.dtype), tuple(tensor.size()))
 
     @staticmethod
     def _stable_base(sig):
         """
-        Computes a stable 31-bit integer seed from the tensor signature using SHA-256.
-
-        Ensures identical seeds across all workers for the same tensor structure.
+        From this signature, it generates a stable 31-bit integer seed using SHA-256.
+        This ensures that the same seed will be generated across all workers if the layout of the tensor is the same.
         """
         h = hashlib.sha256(repr(sig).encode('utf-8')).digest()
         return int.from_bytes(h[:4], byteorder='big', signed=False) & 0x7FFFFFFF
@@ -115,12 +111,10 @@ class RandomSparsityTorch(object):
     @classmethod
     def _next_seed(cls, sig):
         """
-        Generates a deterministic 64-bit seed for PyTorch's CPU RNG.
-
-        Combines:
-            - a stable base derived from the tensor signature
-            - a per-signature counter
-
+        Finally, it generates a deterministic 64-bit integer seed for the CPU RNG used by PyTorch.
+        It combines this information from:
+        1- A stable base, which is generated from the signature, and
+        2- A counter, which is specific to the signature.
         Returns:
             (seed64, step): a 64-bit integer seed and the counter value.
         """
@@ -133,19 +127,14 @@ class RandomSparsityTorch(object):
     @classmethod
     def compress(cls, tensor, fraction=0.30):
         """
-        Compresses the tensor by selecting a deterministic random subset of values.
-
-        Steps:
-            1. Flatten the tensor.
-            2. Compute k = ceil(fraction * n).
-            3. Create a CPU-based torch.Generator with the deterministic seed.
-            4. Generate a random permutation using torch.randperm.
-            5. Select the first k indices and gather the corresponding values.
-
-        Args:
-            tensor: Input PyTorch tensor.
-            fraction: Fraction of elements to keep (default 0.30).
-
+        This function compresses a tensor by choosing a deterministic random subset of its elements.
+        How it works:
+        1- Flatten the tensor. 2- Compute k as the ceiling of fraction times n.
+        3- Initialize a cpu-based torch.Generator with a deterministic seed.
+        4- Sample a random permutation. 5- Sample k indices out of the permutation and gather the tensor elements.
+        Arguments:
+        tensor: input PyTorch tensor.
+        fraction: fraction of elements to keep (default: 0.30).
         Returns:
             values: 1-D tensor of selected values.
             ctx: A tuple containing (original_size, seed64, n, k, device, dtype).
@@ -175,15 +164,13 @@ class RandomSparsityTorch(object):
     @classmethod
     def decompress(cls, values, ctx):
         """
-        Reconstructs the original tensor by scattering values into a zero-filled buffer.
-
+        The function rebuilds the original tensor by inserting the incoming values into a zero-padded buffer.
         Steps:
-            1. Regenerate the same random permutation using the stored seed.
-            2. Select the first k indices.
-            3. Create a zero-initialized flat tensor of length n.
-            4. Scatter the received values at the selected indices.
-            5. Reshape back to the original tensor size.
-
+        1- Reconstruct the same random order based on the stored seed.
+        2- Select the first k elements of the order.
+        3- Create a flat buffer of size n with all elements as zero.
+        4- Scatter the incoming values into the selected positions.
+        5- Reshape the flat buffer back to the original tensor shape.
         Args:
             values: 1-D tensor of received values.
             ctx: (original_size, seed64, n, k, device, dtype).
